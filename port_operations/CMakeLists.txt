@@ -6,6 +6,7 @@ find_package(catkin REQUIRED COMPONENTS rtt_ros cmake_modules
 std_msgs)
 
 find_package(OROCOS-RTT REQUIRED)
+find_package(cmake_modules REQUIRED)
 find_package(Eigen REQUIRED)
 
 include_directories(${catkin_INCLUDE_DIRS} ${Eigen_INCLUDE_DIRS})

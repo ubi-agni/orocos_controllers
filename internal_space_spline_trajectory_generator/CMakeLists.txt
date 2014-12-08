@@ -5,6 +5,7 @@ project(internal_space_spline_trajectory_generator)
 find_package(catkin REQUIRED COMPONENTS rtt_ros trajectory_msgs cmake_modules)
 
 find_package(OROCOS-RTT REQUIRED)
+find_package(cmake_modules REQUIRED)
 find_package(Eigen REQUIRED)
 
 include_directories(${catkin_INCLUDE_DIRS} ${Eigen_INCLUDE_DIRS})
