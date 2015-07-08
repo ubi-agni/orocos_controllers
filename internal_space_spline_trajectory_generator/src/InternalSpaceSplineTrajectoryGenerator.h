@@ -51,6 +51,7 @@
 #include "velocityprofile_spline.hpp"
 
 #include <trajectory_msgs/JointTrajectory.h>
+#include <trajectory_msgs/JointTrajectoryPoint.h>
 
 class InternalSpaceSplineTrajectoryGenerator : public RTT::TaskContext {
  public:
@@ -65,6 +66,8 @@ class InternalSpaceSplineTrajectoryGenerator : public RTT::TaskContext {
   RTT::InputPort<trajectory_msgs::JointTrajectoryConstPtr> port_trajectory_;
 
   RTT::OutputPort<Eigen::VectorXd > port_internal_space_position_command_;
+  RTT::OutputPort<trajectory_msgs::JointTrajectoryPoint> port_internal_space_posvel_command_;
+  
   RTT::InputPort<Eigen::VectorXd > port_internal_space_position_measurement_;
 
  private:
@@ -76,6 +79,7 @@ class InternalSpaceSplineTrajectoryGenerator : public RTT::TaskContext {
   trajectory_msgs::JointTrajectoryPoint trajectory_new_;
 
   Eigen::VectorXd des_jnt_pos_, setpoint_, old_point_;
+  trajectory_msgs::JointTrajectoryPoint setpoint_posvel_;
 
   trajectory_msgs::JointTrajectoryConstPtr trajectory_;
   size_t trajectory_ptr_;
