@@ -38,7 +38,6 @@
 #include "InternalSpaceSplineTrajectoryAction.h"
 #include <ocl/Component.hpp>
 #include <string>
-
 #include "rtt_rosclock/rtt_rosclock.h"
 #include "eigen_conversions/eigen_msg.h"
 
@@ -62,6 +61,7 @@ InternalSpaceSplineTrajectoryAction::InternalSpaceSplineTrajectoryAction(
   this->addEventPort(
       command_port_,
       boost::bind(&InternalSpaceSplineTrajectoryAction::commandCB, this));
+  this->addProperty(numberOfJoints_prop_);
   this->addProperty("joint_names", jointNames_);
   this->addProperty("lower_limits", lowerLimits_);
   this->addProperty("upper_limits", upperLimits_);
@@ -108,15 +108,18 @@ bool InternalSpaceSplineTrajectoryAction::startHook() {
 
 void InternalSpaceSplineTrajectoryAction::updateHook() {
   bool joint_position_data = true;
-
+  bool desired_joint_position_data = true;
   if (port_joint_position_.read(joint_position_) == RTT::NoData) {
     joint_position_data = false;
 
   }
+  
   control_msgs::FollowJointTrajectoryResult res;
 
-  port_joint_position_command_.read(desired_joint_position_);
-
+  if (port_joint_position_command_.read(desired_joint_position_) == RTT::NoData) {
+    desired_joint_position_data = false;
+  }
+  
   Goal g = activeGoal_.getGoal();
 
   if (goal_active_ && joint_position_data) {
@@ -160,9 +163,12 @@ void InternalSpaceSplineTrajectoryAction::updateHook() {
 
       for (int i = 0; i < numberOfJoints_; i++) {
         feedback_.actual.positions[i] = joint_position_[i];
-        feedback_.desired.positions[i] = desired_joint_position_[i];
-        feedback_.error.positions[i] = joint_position_[i]
+        if(desired_joint_position_data)
+        {
+          feedback_.desired.positions[i] = desired_joint_position_[i];
+          feedback_.error.positions[i] = joint_position_[i]
             - desired_joint_position_[i];
+        }
       }
 
       feedback_.header.stamp = rtt_rosclock::host_now();
@@ -174,11 +180,14 @@ void InternalSpaceSplineTrajectoryAction::updateHook() {
       for (int i = 0; i < g->path_tolerance.size(); i++) {
         for (int j = 0; j < jointNames_.size(); j++) {
           if (jointNames_[j] == g->path_tolerance[i].name) {
-            if (fabs(joint_position_[j] - desired_joint_position_[j])
-                > g->path_tolerance[i].position) {
-              violated = true;
-              RTT::Logger::log(RTT::Logger::Error) << "Path tolerance violated"
-                                                   << RTT::endlog();
+            if(desired_joint_position_data)
+            { 
+              if (fabs(joint_position_[j] - desired_joint_position_[j])
+                  > g->path_tolerance[i].position) {
+                violated = true;
+                RTT::Logger::log(RTT::Logger::Error) << "Path tolerance violated"
+                                                     << RTT::endlog();
+              }
             }
           }
         }
@@ -243,7 +252,7 @@ void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
     }
 
     if (invalid_goal) {
-      RTT::Logger::log(RTT::Logger::Debug)
+      RTT::Logger::log(RTT::Logger::Error)
           << "Trajectory contains invalid goal!" << RTT::endlog();
       res.error_code = control_msgs::FollowJointTrajectoryResult::INVALID_GOAL;
       gh.setRejected(res, "");
@@ -284,18 +293,27 @@ void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
           .time_from_start;
     }
 
-    // Sprawdzenie czasu w nagłówku OLD_HEADER_TIMESTAMP
-    if (g->trajectory.header.stamp < rtt_rosclock::host_now()) {
-      RTT::Logger::log(RTT::Logger::Debug) << "Old header timestamp"
+    // Check the time in the header OLD_HEADER_TIMESTAMP
+    // accept timestamp of zero (means now)
+    if (g->trajectory.header.stamp.toSec() !=0 )
+    {
+      if (g->trajectory.header.stamp < rtt_rosclock::host_now()) {
+        RTT::Logger::log(RTT::Logger::Error) << "Old header timestamp"
                                            << RTT::endlog();
-      res.error_code =
-          control_msgs::FollowJointTrajectoryResult::OLD_HEADER_TIMESTAMP;
-      gh.setRejected(res, "");
-    }
-
-    trajectory_finish_time_ = g->trajectory.header.stamp
+        res.error_code =
+            control_msgs::FollowJointTrajectoryResult::OLD_HEADER_TIMESTAMP;
+        gh.setRejected(res, "");
+      }
+      trajectory_finish_time_ = g->trajectory.header.stamp
         + g->trajectory.points[g->trajectory.points.size() - 1].time_from_start;
-
+    }
+    else
+    {
+      trajectory_finish_time_ = rtt_rosclock::host_now()
+        + g->trajectory.points[g->trajectory.points.size() - 1].time_from_start;
+      // modify original time to now
+      trj_ptr->header.stamp = rtt_rosclock::host_now();
+    }
     activeGoal_ = gh;
     goal_active_ = true;
 
@@ -305,7 +323,8 @@ void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
     for (size_t i = 0; i < peers.size(); i++) {
       RTT::Logger::log(RTT::Logger::Debug) << "Starting peer : " << peers[i]
                                            << RTT::endlog();
-      ok = ok && this->getPeer(peers[i])->start();
+      if(!this->getPeer(peers[i])->isRunning())
+        ok = ok && this->getPeer(peers[i])->start();
     }
 
     if (ok) {
@@ -317,6 +336,7 @@ void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
       gh.setAccepted();
       goal_active_ = true;
     } else {
+      RTT::Logger::log(RTT::Logger::Error) << "peer did not start : " << RTT::endlog();
       gh.setRejected();
       goal_active_ = false;
     }

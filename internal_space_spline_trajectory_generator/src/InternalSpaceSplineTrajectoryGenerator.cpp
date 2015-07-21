@@ -38,7 +38,6 @@
 
 #include <string>
 #include <exception>
-
 #include <rtt/Component.hpp>
 #include "rtt_rosclock/rtt_rosclock.h"
 
@@ -114,10 +113,9 @@ void InternalSpaceSplineTrajectoryGenerator::updateHook() {
     old_point_ = setpoint_;
     last_point_not_set_ = true;
     trajectory_active_ = true;
-//   std::cout << std::endl<< "InternalSpaceSplineTrajectoryGenerator new trj" << std::endl<< std::endl<< std::endl;
   }
 
-// std::cout << "InternalSpaceSplineTrajectoryGenerator" << std::endl;
+ 
   ros::Time now = rtt_rosclock::host_now();
   if (trajectory_active_ && trajectory_ && (trajectory_->header.stamp < now)) {
     for (; trajectory_ptr_ < trajectory_->points.size(); trajectory_ptr_++) {
