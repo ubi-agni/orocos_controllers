@@ -75,8 +75,8 @@ bool InternalSpaceSplineTrajectoryGenerator::configureHook() {
     vel_profile_.resize(number_of_joints_);
     setpoint_posvel_.positions.resize(number_of_joints_);
     setpoint_posvel_.velocities.resize(number_of_joints_);
-
     des_jnt_pos_.resize(number_of_joints_);
+    
     port_internal_space_position_command_.setDataSample(des_jnt_pos_);
 
     return true;
@@ -208,14 +208,17 @@ void InternalSpaceSplineTrajectoryGenerator::updateHook() {
         setpoint_(i) = trajectory_->points[trajectory_->points.size() - 1]
                        .positions[i];
         setpoint_posvel_.positions[i] = setpoint_(i);
-        setpoint_posvel_.velocities[i] = trajectory_->points[trajectory_->points.size() - 1]
-                       .velocities[i];
+        if( trajectory_->points[trajectory_->points.size() - 1].velocities.size() > 0 ) 
+        {
+          setpoint_posvel_.velocities[i] = trajectory_->points[trajectory_->points.size() - 1]
+                         .velocities[i];
+        }
       }
       trajectory_ = trajectory_msgs::JointTrajectoryConstPtr();
       last_point_not_set_ = false;
     }
   }
-
+  
   port_internal_space_position_command_.write(setpoint_);
   port_internal_space_posvel_command_.write(setpoint_posvel_);
 }
