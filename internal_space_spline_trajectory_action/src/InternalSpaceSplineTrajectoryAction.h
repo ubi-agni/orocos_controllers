@@ -53,6 +53,7 @@
 
 #include <control_msgs/FollowJointTrajectoryAction.h>
 #include <control_msgs/FollowJointTrajectoryActionGoal.h>
+#include <control_msgs/JointTrajectoryControllerState.h>
 
 #include <trajectory_msgs/JointTrajectoryPoint.h>
 #include <trajectory_msgs/JointTrajectory.h>
@@ -72,6 +73,7 @@ class InternalSpaceSplineTrajectoryAction : public RTT::TaskContext {
 
  protected:
   RTT::OutputPort<trajectory_msgs::JointTrajectoryConstPtr> trajectory_ptr_port_;
+  RTT::OutputPort<control_msgs::JointTrajectoryControllerState> state_pub_port_;
 
   RTT::Property<int> numberOfJoints_prop_;
 
@@ -103,11 +105,14 @@ class InternalSpaceSplineTrajectoryAction : public RTT::TaskContext {
 
   // RTT action server
   rtt_actionlib::RTTActionServer<control_msgs::FollowJointTrajectoryAction> as_;
-  bool goal_active_;
+  bool goal_active_, command_active_;
   GoalHandle activeGoal_;
   bool enable_;
 
   control_msgs::FollowJointTrajectoryFeedback feedback_;
+  control_msgs::JointTrajectoryControllerState control_state_;
+  
+  trajectory_msgs::JointTrajectory command_msg_;
 };
 
 #endif  // INTERNALSPACESPLINETRAJECTORYACTION_H_
