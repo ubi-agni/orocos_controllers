@@ -123,7 +123,9 @@ void InternalSpaceSplineTrajectoryGenerator::updateHook() {
                            + trajectory_->points[trajectory_ptr_].time_from_start;
       if (trj_time > now) {
         for (unsigned int i = 0; i < number_of_joints_; i++) {
+          // if first point
           if (trajectory_ptr_ < 1) {
+            // if pos and velocity and acceleration given
             if (trajectory_->points[trajectory_ptr_].accelerations.size() > 0
                 && trajectory_->points[trajectory_ptr_].velocities.size() > 0) {
               vel_profile_[i].SetProfileDuration(
@@ -134,18 +136,21 @@ void InternalSpaceSplineTrajectoryGenerator::updateHook() {
                 trajectory_->points[trajectory_ptr_].time_from_start.toSec());
             } else if (trajectory_->points[trajectory_ptr_].velocities.size()
                        > 0) {
+              // if pos and velocity given
               vel_profile_[i].SetProfileDuration(
                 old_point_(i), 0.0,
                 trajectory_->points[trajectory_ptr_].positions[i],
                 trajectory_->points[trajectory_ptr_].velocities[i],
                 trajectory_->points[trajectory_ptr_].time_from_start.toSec());
             } else {
+              // if only pos is given
               vel_profile_[i].SetProfileDuration(
                 old_point_(i),
                 trajectory_->points[trajectory_ptr_].positions[i],
                 trajectory_->points[trajectory_ptr_].time_from_start.toSec());
             }
-          } else {
+          } else { // all other points
+            // if pos and velocity and acceleration given
             if (trajectory_->points[trajectory_ptr_ - 1].accelerations.size()
                 > 0
                 && trajectory_->points[trajectory_ptr_].accelerations.size()
@@ -163,6 +168,7 @@ void InternalSpaceSplineTrajectoryGenerator::updateHook() {
             } else if (trajectory_->points[trajectory_ptr_ - 1].velocities.size()
                        > 0
                        && trajectory_->points[trajectory_ptr_].velocities.size() > 0) {
+              // if pos and velocity given
               vel_profile_[i].SetProfileDuration(
                 trajectory_->points[trajectory_ptr_ - 1].positions[i],
                 trajectory_->points[trajectory_ptr_ - 1].velocities[i],
@@ -172,6 +178,7 @@ void InternalSpaceSplineTrajectoryGenerator::updateHook() {
                  - trajectory_->points[trajectory_ptr_ - 1].time_from_start)
                 .toSec());
             } else {
+              // if only pos is given
               vel_profile_[i].SetProfileDuration(
                 trajectory_->points[trajectory_ptr_ - 1].positions[i],
                 trajectory_->points[trajectory_ptr_].positions[i],
