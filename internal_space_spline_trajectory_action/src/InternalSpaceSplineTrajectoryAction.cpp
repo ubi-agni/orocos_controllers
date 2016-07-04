@@ -33,6 +33,9 @@
  *
  *  Created on: 23-09-2010
  *      Author: Konrad Banachowicz
+ * 
+ *  Modified on: 04-07-2016
+ *      Author: Guillaume Walck
  */
 
 #include "InternalSpaceSplineTrajectoryAction.h"
@@ -142,12 +145,13 @@ void InternalSpaceSplineTrajectoryAction::updateHook() {
     bool violated = false;
     now = rtt_rosclock::host_now();
 
+    // analyze goal tolerance
     if (now > trajectory_finish_time_) {
       violated = false;
       for (int i = 0; i < numberOfJoints_; i++) {
         for (int j = 0; j < g->goal_tolerance.size(); j++) {
           if (g->goal_tolerance[j].name == g->trajectory.joint_names[i]) {
-            // Jeśli istnieje ograniczenie to sprawdzam pozycję
+            // If there is a limit, check the position
             if (joint_position_[remapTable_[i]] + g->goal_tolerance[j].position
                 < g->trajectory.points[g->trajectory.points.size() - 1]
                     .positions[i]
@@ -175,8 +179,7 @@ void InternalSpaceSplineTrajectoryAction::updateHook() {
         goal_active_ = false;
       }
     } else {
-      // Wysyłanie feedback
-
+      // send feedback
       for (int i = 0; i < numberOfJoints_; i++) {
         feedback_.actual.positions[i] = joint_position_[i];
         if(desired_joint_position_data)
@@ -190,7 +193,7 @@ void InternalSpaceSplineTrajectoryAction::updateHook() {
       feedback_.header.stamp = rtt_rosclock::host_now();
       activeGoal_.publishFeedback(feedback_);
 
-      // Sprawdzanie PATH_TOLRANCE_VIOLATED
+      // check PATH_TOLERANCE_VIOLATED
       violated = false;
       for (int i = 0; i < g->path_tolerance.size(); i++) {
         for (int j = 0; j < jointNames_.size(); j++) {
@@ -245,16 +248,20 @@ void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
                                          << g->trajectory.points.size()
                                          << " points" << RTT::endlog();
 
-    // fill remap table
-    for (unsigned int i = 0; i < numberOfJoints_; i++) {
+    // fill the remap table
+    // first clear the map
+    remapTable_.assign(numberOfJoints_, -1);
+    // find incoming joints in list of controlled joints
+    for (unsigned int j = 0; j < g->trajectory.joint_names.size(); j++) {
       int jointId = -1;
-      for (unsigned int j = 0; j < g->trajectory.joint_names.size(); j++) {
+      for (unsigned int i = 0; i < numberOfJoints_; i++) {
         if (g->trajectory.joint_names[j] == jointNames_[i]) {
-          jointId = j;
+          jointId = i;
           break;
         }
       }
       if (jointId < 0) {
+        // no matching controlled joint found
         RTT::Logger::log(RTT::Logger::Error)
             << "Trajectory contains invalid joint" << RTT::endlog();
         res.error_code =
@@ -262,22 +269,23 @@ void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
         gh.setRejected(res, "");
         return;
       } else {
-        remapTable_[i] = jointId;
+        remapTable_[jointId] = j;
       }
     }
-
-    // Sprawdzenie ograniczeń w jointach INVALID_GOAL
+    
+    // Check if desired pos are within limits
     bool invalid_goal = false;
     for (unsigned int i = 0; i < numberOfJoints_; i++) {
-      for (int j = 0; j < g->trajectory.points.size(); j++) {
-        if (g->trajectory.points[j].positions[i] > upperLimits_[remapTable_[i]]
-            || g->trajectory.points[j].positions[i]
-                < lowerLimits_[remapTable_[i]]) {
-          RTT::Logger::log(RTT::Logger::Debug)
-              << "Invalid goal [" << i << "]: " << upperLimits_[remapTable_[i]]
-              << ">" << g->trajectory.points[j].positions[i] << ">"
-              << lowerLimits_[remapTable_[i]] << RTT::endlog();
-          invalid_goal = true;
+      if (remapTable_[i] >= 0) { // if provided joint
+        for (int j = 0; j < g->trajectory.points.size(); j++) {
+          if (g->trajectory.points[j].positions[remapTable_[i]] > upperLimits_[i]
+              || g->trajectory.points[j].positions[remapTable_[i]] < lowerLimits_[i]) {
+            RTT::Logger::log(RTT::Logger::Debug)
+                << "Invalid goal [" << jointNames_[i] << "]: " << upperLimits_[i]
+                << ">" << g->trajectory.points[j].positions[remapTable_[i]] << ">"
+                << lowerLimits_[i] << RTT::endlog();
+            invalid_goal = true;
+          }
         }
       }
     }
@@ -291,37 +299,47 @@ void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
       return;
     }
 
-    // Remap joints
+    // Remap joints and fill up missing ones
     trj_ptr->header = g->trajectory.header;
     trj_ptr->points.resize(g->trajectory.points.size());
 
     for (unsigned int i = 0; i < g->trajectory.points.size(); i++) {
-      trj_ptr->points[i].positions.resize(
-          g->trajectory.points[i].positions.size());
-      for (unsigned int j = 0; j < g->trajectory.points[i].positions.size();
-          j++) {
-        trj_ptr->points[i].positions[j] =
-            g->trajectory.points[i].positions[remapTable_[j]];
+      trj_ptr->points[i].positions.resize(numberOfJoints_);
+      for (unsigned int j = 0; j < numberOfJoints_; j++) {
+        if (remapTable_[j] >= 0) { // if provided joint
+          trj_ptr->points[i].positions[j] = g->trajectory.points[i].positions[remapTable_[j]];
+        }
+        else { // set current value for not provided joints.
+          trj_ptr->points[i].positions[j] = joint_position_[j];
+        }
       }
 
-      trj_ptr->points[i].velocities.resize(
-          g->trajectory.points[i].velocities.size());
-      for (unsigned int j = 0; j < g->trajectory.points[i].velocities.size();
-          j++) {
-        trj_ptr->points[i].velocities[j] =
-            g->trajectory.points[i].velocities[remapTable_[j]];
+      if( g->trajectory.points[i].velocities.size()) {
+        // if any velocity info given
+        trj_ptr->points[i].velocities.resize(numberOfJoints_);
+        for (unsigned int j = 0; j < numberOfJoints_; j++) {
+          if (remapTable_[j] >= 0) { // if provided joint
+            trj_ptr->points[i].velocities[j] = g->trajectory.points[i].velocities[remapTable_[j]];
+          }
+          else { // set 0 for not provided joints.
+            trj_ptr->points[i].velocities[j] = 0.0;
+          }
+        }
       }
-
-      trj_ptr->points[i].accelerations.resize(
-          g->trajectory.points[i].accelerations.size());
-      for (unsigned int j = 0; j < g->trajectory.points[i].accelerations.size();
-          j++) {
-        trj_ptr->points[i].accelerations[j] = g->trajectory.points[i]
-            .accelerations[remapTable_[j]];
+      
+      if( g->trajectory.points[i].accelerations.size()) {
+        // if any acceleration info given
+        trj_ptr->points[i].accelerations.resize(numberOfJoints_);
+        for (unsigned int j = 0; j < numberOfJoints_; j++) {
+          if (remapTable_[j] >= 0) { // if provided joint
+            trj_ptr->points[i].accelerations[j] = g->trajectory.points[i].accelerations[remapTable_[j]];
+          }
+          else { // set 0 for not provided joints.
+            trj_ptr->points[i].accelerations[j] = 0.0;
+          }
+        }
       }
-
-      trj_ptr->points[i].time_from_start = g->trajectory.points[i]
-          .time_from_start;
+      trj_ptr->points[i].time_from_start = g->trajectory.points[i].time_from_start;
     }
 
     // Check the time in the header OLD_HEADER_TIMESTAMP
@@ -395,36 +413,41 @@ void InternalSpaceSplineTrajectoryAction::commandCB() {
                                          << command_msg_.points.size()
                                          << " points" << RTT::endlog();
 
-    // fill remap table
-    for (unsigned int i = 0; i < numberOfJoints_; i++) {
+    // fill the remap table
+    // first clear the map
+    remapTable_.assign(numberOfJoints_, -1);
+    // find incoming joints in list of controlled joints
+    for (unsigned int j = 0; j < command_msg_.joint_names.size(); j++) {
       int jointId = -1;
-      for (unsigned int j = 0; j < command_msg_.joint_names.size(); j++) {
+      for (unsigned int i = 0; i < numberOfJoints_; i++) {
         if (command_msg_.joint_names[j] == jointNames_[i]) {
-          jointId = j;
+          jointId = i;
           break;
         }
       }
       if (jointId < 0) {
+        // no matching controlled joint found
         RTT::Logger::log(RTT::Logger::Error)
             << "Trajectory contains invalid joint" << RTT::endlog();
         return;
       } else {
-        remapTable_[i] = jointId;
+        remapTable_[jointId] = j;
       }
     }
 
-    // Sprawdzenie ograniczeń w jointach INVALID_GOAL
+    // Check if desired pos are within limits
     bool invalid_goal = false;
     for (unsigned int i = 0; i < numberOfJoints_; i++) {
-      for (int j = 0; j < command_msg_.points.size(); j++) {
-        if (command_msg_.points[j].positions[i] > upperLimits_[remapTable_[i]]
-            || command_msg_.points[j].positions[i]
-                < lowerLimits_[remapTable_[i]]) {
-          RTT::Logger::log(RTT::Logger::Debug)
-              << "Invalid goal [" << i << "]: " << upperLimits_[remapTable_[i]]
-              << ">" << command_msg_.points[j].positions[i] << ">"
-              << lowerLimits_[remapTable_[i]] << RTT::endlog();
-          invalid_goal = true;
+      if (remapTable_[i] >= 0) { // if provided joint
+        for (int j = 0; j < command_msg_.points.size(); j++) {
+          if (command_msg_.points[j].positions[remapTable_[i]] > upperLimits_[i]
+              || command_msg_.points[j].positions[remapTable_[i]] < lowerLimits_[i]) {
+            RTT::Logger::log(RTT::Logger::Debug)
+                << "Invalid goal [" << jointNames_[i] << "]: " << upperLimits_[i]
+                << ">" << command_msg_.points[j].positions[remapTable_[i]] << ">"
+                << lowerLimits_[i] << RTT::endlog();
+            invalid_goal = true;
+          }
         }
       }
     }
@@ -435,37 +458,48 @@ void InternalSpaceSplineTrajectoryAction::commandCB() {
       return;
     }
 
-    // Remap joints
+    // Remap joints and fill up missing ones
     trj_ptr->header = command_msg_.header;
     trj_ptr->points.resize(command_msg_.points.size());
 
     for (unsigned int i = 0; i < command_msg_.points.size(); i++) {
-      trj_ptr->points[i].positions.resize(
-          command_msg_.points[i].positions.size());
-      for (unsigned int j = 0; j < command_msg_.points[i].positions.size();
-          j++) {
-        trj_ptr->points[i].positions[j] =
-            command_msg_.points[i].positions[remapTable_[j]];
+      trj_ptr->points[i].positions.resize(numberOfJoints_);
+      for (unsigned int j = 0; j < numberOfJoints_; j++) {
+        if (remapTable_[j] >= 0) { // if provided joint
+          trj_ptr->points[i].positions[j] = command_msg_.points[i].positions[remapTable_[j]];
+        }
+        else { // set current value for not provided joints.
+          trj_ptr->points[i].positions[j] = joint_position_[j];
+        }
       }
 
-      trj_ptr->points[i].velocities.resize(
-          command_msg_.points[i].velocities.size());
-      for (unsigned int j = 0; j < command_msg_.points[i].velocities.size();
-          j++) {
-        trj_ptr->points[i].velocities[j] =
-            command_msg_.points[i].velocities[remapTable_[j]];
+      if( command_msg_.points[i].velocities.size()) {
+        // if any velocity info given
+        trj_ptr->points[i].velocities.resize(numberOfJoints_);
+        
+        for (unsigned int j = 0; j < numberOfJoints_; j++) {
+          if (remapTable_[j] >= 0) { // if provided joint
+            trj_ptr->points[i].velocities[j] = command_msg_.points[i].velocities[remapTable_[j]];
+          }
+          else { // set 0 for not provided joints.
+            trj_ptr->points[i].velocities[j] = 0.0;
+          }
+        }
       }
 
-      trj_ptr->points[i].accelerations.resize(
-          command_msg_.points[i].accelerations.size());
-      for (unsigned int j = 0; j < command_msg_.points[i].accelerations.size();
-          j++) {
-        trj_ptr->points[i].accelerations[j] = command_msg_.points[i]
-            .accelerations[remapTable_[j]];
+      if( command_msg_.points[i].accelerations.size()) {
+        // if any acceleration info given
+        trj_ptr->points[i].accelerations.resize(numberOfJoints_);
+        for (unsigned int j = 0; j < numberOfJoints_; j++) {
+          if (remapTable_[j] >= 0) { // if provided joint
+            trj_ptr->points[i].accelerations[j] = command_msg_.points[i].accelerations[remapTable_[j]];
+          }
+          else { // set 0 for not provided joints.
+            trj_ptr->points[i].accelerations[j] = 0.0;
+          }
+        }
       }
-
-      trj_ptr->points[i].time_from_start = command_msg_.points[i]
-          .time_from_start;
+      trj_ptr->points[i].time_from_start = command_msg_.points[i].time_from_start;
     }
 
     // Check the time in the header OLD_HEADER_TIMESTAMP
