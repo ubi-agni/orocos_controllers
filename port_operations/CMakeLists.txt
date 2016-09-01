@@ -7,9 +7,9 @@ std_msgs)
 
 find_package(OROCOS-RTT REQUIRED)
 find_package(cmake_modules REQUIRED)
-find_package(Eigen REQUIRED)
+find_package(Eigen3 REQUIRED)
 
-include_directories(${catkin_INCLUDE_DIRS} ${Eigen_INCLUDE_DIRS})
+include_directories(${catkin_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR})
 
 orocos_component(port_double_split src/PortDoubleSplit.cpp)
 target_link_libraries(port_double_split ${catkin_LIBRARIES})
