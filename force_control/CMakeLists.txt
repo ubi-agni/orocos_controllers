@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.3)
 
 project(force_control)
 
-find_package(catkin REQUIRED COMPONENTS rtt_ros geometry_msgs eigen_conversions kdl_conversions rtt_force_control_msgs cmake_modules)
+find_package(catkin REQUIRED COMPONENTS rtt_ros geometry_msgs eigen_conversions kdl_conversions rtt_force_control_msgs)
 
 find_package(OROCOS-RTT REQUIRED)
 find_package(Eigen3 REQUIRED)
