@@ -49,6 +49,7 @@
 #include <rtt/Property.hpp>
 
 #include <rtt_actionlib/rtt_actionlib.h>
+#include <boost/thread/reverse_lock.hpp>
 #include <rtt_actionlib/rtt_action_server.h>
 
 #include <control_msgs/FollowJointTrajectoryAction.h>
