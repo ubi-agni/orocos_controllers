@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.3)
 
 project(port_operations)
 
-find_package(catkin REQUIRED COMPONENTS rtt_ros std_msgs)
+find_package(catkin REQUIRED COMPONENTS rtt_ros std_msgs geometry_msgs eigen_conversions)
 
 find_package(OROCOS-RTT REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -17,6 +17,9 @@ target_link_libraries(port_double_aggregate ${catkin_LIBRARIES})
 
 orocos_component(port_double_sum src/PortDoubleSum.cpp)
 target_link_libraries(port_double_sum ${catkin_LIBRARIES})
+
+orocos_component(port_pose_twist_sum src/PortPoseTwistSum.cpp)
+target_link_libraries(port_pose_twist_sum ${catkin_LIBRARIES})
 
 orocos_component(port_double_to_float64 src/PortDoubleToFloat64.cpp)
 target_link_libraries(port_double_to_float64 ${catkin_LIBRARIES})
