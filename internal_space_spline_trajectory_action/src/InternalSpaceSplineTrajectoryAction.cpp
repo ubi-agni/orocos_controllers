@@ -44,6 +44,8 @@
 #include "rtt_rosclock/rtt_rosclock.h"
 #include "eigen_conversions/eigen_msg.h"
 
+
+
 InternalSpaceSplineTrajectoryAction::InternalSpaceSplineTrajectoryAction(
     const std::string& name)
     : RTT::TaskContext(name, PreOperational),
@@ -236,11 +238,38 @@ void InternalSpaceSplineTrajectoryAction::updateHook() {
   
 }
 
+// init joint trajectory (handles overlaps)
+// see https://github.com/ros-controls/ros_controllers/blob/kinetic-devel/joint_trajectory_controller/include/joint_trajectory_controller/init_joint_trajectory.h
+
+
+
 void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
   if (!goal_active_) {
     trajectory_msgs::JointTrajectory* trj_ptr =
         new trajectory_msgs::JointTrajectory;
     Goal g = gh.getGoal();
+    
+    // if traj within goal is empty, hold the current pos
+    if (!g->trajectory.joint_names.size())
+    {
+      RTT::Logger::log(RTT::Logger::Error)
+          << "Trajectory is empty!" << RTT::endlog();
+      return;
+    }
+
+    // Periodicity of peer
+    RTT::TaskContext::PeerList peers = this->getPeerList();
+    double period = 0.0;
+    if (peers.size())
+    {
+      period = peers[0].getPeriod();
+    }
+
+    // Time of the next update
+    const ros::Time next_update_time = rtt_rosclock::host_now() + period;
+    const ros::Time msg_start_time = startTime(msg, time);  // Message start time
+
+    // use the new trajectory
 
     control_msgs::FollowJointTrajectoryResult res;
 
@@ -299,47 +328,88 @@ void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
       return;
     }
 
+    // initialise an internal joint_trajectory with a function 
+    // that checks the next update time and drops all waypoints that are in the past
+    // if empty, all are in the past, keep executing current goal
+
+// Find first point of new trajectory occurring after current time
+    // This point is used later on in this function, but is computed here, in advance because if the trajectory message
+    // contains a trajectory in the past, we can quickly return without spending additional computational resources
+    std::vector<trajectory_msgs::JointTrajectoryPoint>::const_iterator
+    msg_it = findPoint(g->trajectory, next_update_time);  // Points to last point occurring before current time 
+    if (msg_it == msg.points.end())
+    {
+      msg_it = msg.points.begin();  // Entire trajectory is after current time
+    }
+    else
+    {
+      ++msg_it;                     // Points to first point after current time OR sequence end
+      if (msg_it == msg.points.end())
+      {
+        ros::Duration last_point_dur = time - (msg_start_time + (--msg_it)->time_from_start);
+        RTT::Logger::log(RTT::Logger::Error) << "Dropping all " << g->trajectory.points.size() <<
+                        " trajectory point(s), as they occur before the current time.\n" <<
+                        "Last point is " << std::fixed << std::setprecision(3) << last_point_dur.toSec() <<
+                        "s in the past." << RTT::endlog();
+        return Trajectory();
+      }
+      else
+      {
+        ros::Duration next_point_dur = msg_start_time + msg_it->time_from_start - time;
+        RTT::Logger::log(RTT::Logger::Error) << "Dropping first " << std::distance(g->trajectory.points.begin(), msg_it) <<
+                        " trajectory point(s) out of " << g->trajectory.points.size() <<
+                        ", as they occur before the current time.\n" <<
+                        "First valid point will be reached in " << std::fixed << std::setprecision(3) <<
+                        next_point_dur.toSec() << "s." << RTT::endlog();
+      }
+    }
+
     // Remap joints and fill up missing ones
     trj_ptr->header = g->trajectory.header;
-    trj_ptr->points.resize(g->trajectory.points.size());
+    // resize the trajectory to contain only points in the future
+    //trj_ptr->points.resize(g->trajectory.points.size(std::distance(msg_it, g->trajectory.points.end()) ));
+    
 
-    for (unsigned int i = 0; i < g->trajectory.points.size(); i++) {
-      trj_ptr->points[i].positions.resize(numberOfJoints_);
+    for (std::vector<trajectory_msgs::JointTrajectoryPoint>::const_iterator it = msg_it; it != g->trajectory.points.end() ; it++) {
+      trajectory_msgs::JointTrajectoryPoint point;
+      point.positions.resize(numberOfJoints_);
       for (unsigned int j = 0; j < numberOfJoints_; j++) {
         if (remapTable_[j] >= 0) { // if provided joint
-          trj_ptr->points[i].positions[j] = g->trajectory.points[i].positions[remapTable_[j]];
+          point.positions[j] = it->positions[remapTable_[j]];
         }
         else { // set current value for not provided joints.
-          trj_ptr->points[i].positions[j] = joint_position_[j];
+          point.positions[j] = joint_position_[j];
         }
       }
 
-      if( g->trajectory.points[i].velocities.size()) {
+      if( it->velocities.size()) {
         // if any velocity info given
-        trj_ptr->points[i].velocities.resize(numberOfJoints_);
+        point.velocities.resize(numberOfJoints_);
         for (unsigned int j = 0; j < numberOfJoints_; j++) {
           if (remapTable_[j] >= 0) { // if provided joint
-            trj_ptr->points[i].velocities[j] = g->trajectory.points[i].velocities[remapTable_[j]];
+            point.velocities[j] = it->velocities[remapTable_[j]];
           }
           else { // set 0 for not provided joints.
-            trj_ptr->points[i].velocities[j] = 0.0;
+            point.velocities[j] = 0.0;
           }
         }
       }
       
-      if( g->trajectory.points[i].accelerations.size()) {
+      if( it->accelerations.size()) {
         // if any acceleration info given
-        trj_ptr->points[i].accelerations.resize(numberOfJoints_);
+        point.accelerations.resize(numberOfJoints_);
         for (unsigned int j = 0; j < numberOfJoints_; j++) {
           if (remapTable_[j] >= 0) { // if provided joint
-            trj_ptr->points[i].accelerations[j] = g->trajectory.points[i].accelerations[remapTable_[j]];
+            point.accelerations[j] = it->accelerations[remapTable_[j]];
           }
           else { // set 0 for not provided joints.
-            trj_ptr->points[i].accelerations[j] = 0.0;
+            point.accelerations[j] = 0.0;
           }
         }
       }
-      trj_ptr->points[i].time_from_start = g->trajectory.points[i].time_from_start;
+      point.time_from_start = it->time_from_start;
+      
+      trj_ptr->points.pushback(point);
     }
 
     // Check the time in the header OLD_HEADER_TIMESTAMP
@@ -368,7 +438,6 @@ void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
 
     bool ok = true;
 
-    RTT::TaskContext::PeerList peers = this->getPeerList();
     for (size_t i = 0; i < peers.size(); i++) {
       RTT::Logger::log(RTT::Logger::Debug) << "Starting peer : " << peers[i]
                                            << RTT::endlog();

@@ -59,6 +59,54 @@
 #include <trajectory_msgs/JointTrajectoryPoint.h>
 #include <trajectory_msgs/JointTrajectory.h>
 
+// copied from joint_trajectory_controller/joint_trajectory_msg_utils.h
+inline ros::Time startTime(const trajectory_msgs::JointTrajectory& msg,
+                           const ros::Time&                        time)
+{
+  return msg.header.stamp.isZero() ? time : msg.header.stamp;
+}
+
+// copied from joint_trajectory_controller/joint_trajectory_msg_utils.h
+class IsBeforePoint
+{
+public:
+  IsBeforePoint(const ros::Time& msg_start_time) : msg_start_time_(msg_start_time) {}
+
+  bool operator()(const ros::Time& time, const trajectory_msgs::JointTrajectoryPoint& point)
+  {
+    const ros::Time point_start_time = msg_start_time_ + point.time_from_start;
+    return time < point_start_time;
+  }
+
+private:
+  ros::Time msg_start_time_;
+};
+
+
+
+// copied from joint_trajectory_controller/joint_trajectory_msg_utils.h
+inline std::vector<trajectory_msgs::JointTrajectoryPoint>::const_iterator
+findPoint(const trajectory_msgs::JointTrajectory& msg,
+          const ros::Time&                        time)
+{
+  // Message trajectory start time
+  // If message time is == 0.0, the trajectory should start at the current time
+  const ros::Time msg_start_time = msg.header.stamp.isZero() ? time : msg.header.stamp;
+
+  ros::Time point_start_time = msg_start_time_ + point.time_from_start;
+
+  IsBeforePoint isBeforePoint(msg_start_time);
+
+  typedef std::vector<trajectory_msgs::JointTrajectoryPoint>::const_iterator ConstIterator;
+  const ConstIterator first = msg.points.begin();
+  const ConstIterator last  = msg.points.end();
+
+  return (first == last || isBeforePoint(time, *first))
+         ? last // Optimization when time preceeds all segments, or when an empty range is passed
+         : --std::upper_bound(first, last, time, isBeforePoint); // Notice decrement operator
+}
+
+
 class InternalSpaceSplineTrajectoryAction : public RTT::TaskContext {
  private:
   typedef actionlib::ServerGoalHandle<control_msgs::FollowJointTrajectoryAction> GoalHandle;
