@@ -275,17 +275,50 @@ void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
     
     // Check if desired pos are within limits
     bool invalid_goal = false;
+    bool previous_invalid = false;
     for (unsigned int i = 0; i < numberOfJoints_; i++) {
       if (remapTable_[i] >= 0) { // if provided joint
+        previous_invalid = false;
         for (int j = 0; j < g->trajectory.points.size(); j++) {
           if (g->trajectory.points[j].positions[remapTable_[i]] > upperLimits_[i]
               || g->trajectory.points[j].positions[remapTable_[i]] < lowerLimits_[i]) {
+            if (j == 0)
+              previous_invalid = true;
+            // accept a point if first one and possibily adjacent ones are invalid
+            // but direction of motion is bringing it within bounds.
+            if (previous_invalid && j+1 < g->trajectory.points.size())
+            {
+              // calculate sign of motion from next pos
+              double motion = g->trajectory.points[j+1].positions[remapTable_[i]] - g->trajectory.points[j].positions[remapTable_[i]];
+              if (motion == 0.0)  // no motion, look at further points
+              {
+                RTT::Logger::log(RTT::Logger::Debug) << "waypoint " << j << " for joint [" << jointNames_[i] 
+                << "] is out of bound but the next waypoint does not move this joint either, looking for next one" << RTT::endlog();
+                continue;
+              }
+              float motion_sign = motion>0?1.0:-1.0;
+              // validate reduction (accept even if next point is out-of-bound)
+              if ( (g->trajectory.points[j].positions[remapTable_[i]] - upperLimits_[i]) * motion_sign < 0 
+                  && (g->trajectory.points[j].positions[remapTable_[i]] - lowerLimits_[i]) * motion_sign < 0 )
+              {
+                 RTT::Logger::log(RTT::Logger::Debug) << "waypoint " << j << " for joint [" << jointNames_[i] 
+                << "] is out of bound but the next waypoint moves out of bound, continuing" << RTT::endlog();
+                continue;
+              }
+              else
+                RTT::Logger::log(RTT::Logger::Debug) << "waypoint " << j << " for joint [" << jointNames_[i] 
+                << "] is out of bound and the next waypoint does not bring it withing bounds (motion dir " << motion_sign 
+                << ")" << RTT::endlog();
+            }
+
             RTT::Logger::log(RTT::Logger::Debug)
                 << "Invalid goal [" << jointNames_[i] << "]: " << upperLimits_[i]
                 << ">" << g->trajectory.points[j].positions[remapTable_[i]] << ">"
                 << lowerLimits_[i] << RTT::endlog();
             invalid_goal = true;
           }
+          // reset the validity of the previous point (happens if we are out of invalid first few points)
+          previous_invalid = false;
         }
       }
     }
