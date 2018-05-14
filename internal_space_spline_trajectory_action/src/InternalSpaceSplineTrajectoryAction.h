@@ -84,7 +84,9 @@ class InternalSpaceSplineTrajectoryAction : public RTT::TaskContext {
   RTT::InputPort<Eigen::VectorXd> port_joint_position_command_;
 
  private:
+  void setSafeMode(const bool safe_mode);
   void goalCB(GoalHandle gh);
+  void cancelGoal();
   void cancelCB(GoalHandle gh);
 
   void commandCB();

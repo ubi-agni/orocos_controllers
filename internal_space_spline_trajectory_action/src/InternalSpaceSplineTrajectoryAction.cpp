@@ -47,7 +47,8 @@
 InternalSpaceSplineTrajectoryAction::InternalSpaceSplineTrajectoryAction(
     const std::string& name)
     : RTT::TaskContext(name, PreOperational),
-      numberOfJoints_prop_("number_of_joints", "", 0){
+      numberOfJoints_prop_("number_of_joints", "", 0),
+      enable_(false){
   // Add action server ports to this task's root service
   as_.addPorts(this->provides());
 
@@ -69,6 +70,8 @@ InternalSpaceSplineTrajectoryAction::InternalSpaceSplineTrajectoryAction(
   this->addProperty("joint_names", jointNames_);
   this->addProperty("lower_limits", lowerLimits_);
   this->addProperty("upper_limits", upperLimits_);
+
+  this->addOperation("setSafeMode", (void (InternalSpaceSplineTrajectoryAction::*)(const bool))&InternalSpaceSplineTrajectoryAction::setSafeMode,this, RTT::ClientThread).doc("set SafeMode on (inhibit actionlib) or off");
 }
 
 InternalSpaceSplineTrajectoryAction::~InternalSpaceSplineTrajectoryAction() {
@@ -236,200 +239,244 @@ void InternalSpaceSplineTrajectoryAction::updateHook() {
   
 }
 
+void InternalSpaceSplineTrajectoryAction::setSafeMode(const bool safe_mode)
+{
+  // enable is the opposite of safe mode
+  if (enable_ == safe_mode)
+  {
+    if (safe_mode)
+    {
+      cancelGoal();
+      // as_ should not be stopped (will unsubscriber from ROS topics)
+      // but inhibited
+      RTT::Logger::log(RTT::Logger::Debug) << "Trajectory Action lib is now in safe mode" << RTT::endlog();
+    }
+    else
+      RTT::Logger::log(RTT::Logger::Debug) << "Trajectory Action lib is standard mode" << RTT::endlog();
+    enable_ = !safe_mode;
+  }
+}
+
+
 void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
-  if (!goal_active_) {
-    trajectory_msgs::JointTrajectory* trj_ptr =
-        new trajectory_msgs::JointTrajectory;
-    Goal g = gh.getGoal();
+  if (enable_) {  // in safe mode no goal is accepted
+    if (!goal_active_) {
+      trajectory_msgs::JointTrajectory* trj_ptr =
+          new trajectory_msgs::JointTrajectory;
+      Goal g = gh.getGoal();
 
-    control_msgs::FollowJointTrajectoryResult res;
+      control_msgs::FollowJointTrajectoryResult res;
 
-    RTT::Logger::log(RTT::Logger::Debug) << "Received trajectory contain "
-                                         << g->trajectory.points.size()
-                                         << " points" << RTT::endlog();
+      RTT::Logger::log(RTT::Logger::Debug) << "Received trajectory contain "
+                                           << g->trajectory.points.size()
+                                           << " points" << RTT::endlog();
 
-    // fill the remap table
-    // first clear the map
-    remapTable_.assign(numberOfJoints_, -1);
-    // find incoming joints in list of controlled joints
-    for (unsigned int j = 0; j < g->trajectory.joint_names.size(); j++) {
-      int jointId = -1;
-      for (unsigned int i = 0; i < numberOfJoints_; i++) {
-        if (g->trajectory.joint_names[j] == jointNames_[i]) {
-          jointId = i;
-          break;
-        }
-      }
-      if (jointId < 0) {
-        // no matching controlled joint found
-        RTT::Logger::log(RTT::Logger::Error)
-            << "Trajectory contains invalid joint" << RTT::endlog();
-        res.error_code =
-            control_msgs::FollowJointTrajectoryResult::INVALID_JOINTS;
-        gh.setRejected(res, "");
-        return;
-      } else {
-        remapTable_[jointId] = j;
-      }
-    }
-    
-    // Check if desired pos are within limits
-    bool invalid_goal = false;
-    bool previous_invalid = false;
-    for (unsigned int i = 0; i < numberOfJoints_; i++) {
-      if (remapTable_[i] >= 0) { // if provided joint
-        previous_invalid = false;
-        for (int j = 0; j < g->trajectory.points.size(); j++) {
-          if (g->trajectory.points[j].positions[remapTable_[i]] > upperLimits_[i]
-              || g->trajectory.points[j].positions[remapTable_[i]] < lowerLimits_[i]) {
-            if (j == 0)
-              previous_invalid = true;
-            // accept a point if first one and possibily adjacent ones are invalid
-            // but direction of motion is bringing it within bounds.
-            if (previous_invalid && j+1 < g->trajectory.points.size())
-            {
-              // calculate sign of motion from next pos
-              double motion = g->trajectory.points[j+1].positions[remapTable_[i]] - g->trajectory.points[j].positions[remapTable_[i]];
-              if (motion == 0.0)  // no motion, look at further points
-              {
-                RTT::Logger::log(RTT::Logger::Debug) << "waypoint " << j << " for joint [" << jointNames_[i] 
-                << "] is out of bound but the next waypoint does not move this joint either, looking for next one" << RTT::endlog();
-                continue;
-              }
-              float motion_sign = motion>0?1.0:-1.0;
-              // validate reduction (accept even if next point is out-of-bound)
-              if ( (g->trajectory.points[j].positions[remapTable_[i]] - upperLimits_[i]) * motion_sign < 0 
-                  && (g->trajectory.points[j].positions[remapTable_[i]] - lowerLimits_[i]) * motion_sign < 0 )
-              {
-                 RTT::Logger::log(RTT::Logger::Debug) << "waypoint " << j << " for joint [" << jointNames_[i] 
-                << "] is out of bound but the next waypoint moves out of bound, continuing" << RTT::endlog();
-                continue;
-              }
-              else
-                RTT::Logger::log(RTT::Logger::Debug) << "waypoint " << j << " for joint [" << jointNames_[i] 
-                << "] is out of bound and the next waypoint does not bring it withing bounds (motion dir " << motion_sign 
-                << ")" << RTT::endlog();
-            }
-
-            RTT::Logger::log(RTT::Logger::Debug)
-                << "Invalid goal [" << jointNames_[i] << "]: " << upperLimits_[i]
-                << ">" << g->trajectory.points[j].positions[remapTable_[i]] << ">"
-                << lowerLimits_[i] << RTT::endlog();
-            invalid_goal = true;
+      // fill the remap table
+      // first clear the map
+      remapTable_.assign(numberOfJoints_, -1);
+      // find incoming joints in list of controlled joints
+      for (unsigned int j = 0; j < g->trajectory.joint_names.size(); j++) {
+        int jointId = -1;
+        for (unsigned int i = 0; i < numberOfJoints_; i++) {
+          if (g->trajectory.joint_names[j] == jointNames_[i]) {
+            jointId = i;
+            break;
           }
-          // reset the validity of the previous point (happens if we are out of invalid first few points)
-          previous_invalid = false;
         }
-      }
-    }
-
-    if (invalid_goal) {
-      RTT::Logger::log(RTT::Logger::Error)
-          << "Trajectory contains invalid goal!" << RTT::endlog();
-      res.error_code = control_msgs::FollowJointTrajectoryResult::INVALID_GOAL;
-      gh.setRejected(res, "");
-      goal_active_ = false;
-      return;
-    }
-
-    // Remap joints and fill up missing ones
-    trj_ptr->header = g->trajectory.header;
-    trj_ptr->points.resize(g->trajectory.points.size());
-
-    for (unsigned int i = 0; i < g->trajectory.points.size(); i++) {
-      trj_ptr->points[i].positions.resize(numberOfJoints_);
-      for (unsigned int j = 0; j < numberOfJoints_; j++) {
-        if (remapTable_[j] >= 0) { // if provided joint
-          trj_ptr->points[i].positions[j] = g->trajectory.points[i].positions[remapTable_[j]];
-        }
-        else { // set current value for not provided joints.
-          trj_ptr->points[i].positions[j] = joint_position_[j];
-        }
-      }
-
-      if( g->trajectory.points[i].velocities.size()) {
-        // if any velocity info given
-        trj_ptr->points[i].velocities.resize(numberOfJoints_);
-        for (unsigned int j = 0; j < numberOfJoints_; j++) {
-          if (remapTable_[j] >= 0) { // if provided joint
-            trj_ptr->points[i].velocities[j] = g->trajectory.points[i].velocities[remapTable_[j]];
-          }
-          else { // set 0 for not provided joints.
-            trj_ptr->points[i].velocities[j] = 0.0;
-          }
+        if (jointId < 0) {
+          // no matching controlled joint found
+          RTT::Logger::log(RTT::Logger::Error)
+              << "Trajectory contains invalid joint" << RTT::endlog();
+          res.error_code =
+              control_msgs::FollowJointTrajectoryResult::INVALID_JOINTS;
+          gh.setRejected(res, "");
+          return;
+        } else {
+          remapTable_[jointId] = j;
         }
       }
       
-      if( g->trajectory.points[i].accelerations.size()) {
-        // if any acceleration info given
-        trj_ptr->points[i].accelerations.resize(numberOfJoints_);
-        for (unsigned int j = 0; j < numberOfJoints_; j++) {
-          if (remapTable_[j] >= 0) { // if provided joint
-            trj_ptr->points[i].accelerations[j] = g->trajectory.points[i].accelerations[remapTable_[j]];
-          }
-          else { // set 0 for not provided joints.
-            trj_ptr->points[i].accelerations[j] = 0.0;
+      // Check if desired pos are within limits
+      bool invalid_goal = false;
+      bool previous_invalid = false;
+      for (unsigned int i = 0; i < numberOfJoints_; i++) {
+        if (remapTable_[i] >= 0) { // if provided joint
+          previous_invalid = false;
+          for (int j = 0; j < g->trajectory.points.size(); j++) {
+            if (g->trajectory.points[j].positions[remapTable_[i]] > upperLimits_[i]
+                || g->trajectory.points[j].positions[remapTable_[i]] < lowerLimits_[i]) {
+              if (j == 0)
+                previous_invalid = true;
+              // accept a point if first one and possibily adjacent ones are invalid
+              // but direction of motion is bringing it within bounds.
+              if (previous_invalid && j+1 < g->trajectory.points.size())
+              {
+                // calculate sign of motion from next pos
+                double motion = g->trajectory.points[j+1].positions[remapTable_[i]] - g->trajectory.points[j].positions[remapTable_[i]];
+                if (motion == 0.0)  // no motion, look at further points
+                {
+                  RTT::Logger::log(RTT::Logger::Debug) << "waypoint " << j << " for joint [" << jointNames_[i] 
+                  << "] is out of bound but the next waypoint does not move this joint either, looking for next one" << RTT::endlog();
+                  continue;
+                }
+                float motion_sign = motion>0?1.0:-1.0;
+                // validate reduction (accept even if next point is out-of-bound)
+                if ( (g->trajectory.points[j].positions[remapTable_[i]] - upperLimits_[i]) * motion_sign < 0 
+                    && (g->trajectory.points[j].positions[remapTable_[i]] - lowerLimits_[i]) * motion_sign < 0 )
+                {
+                   RTT::Logger::log(RTT::Logger::Debug) << "waypoint " << j << " for joint [" << jointNames_[i] 
+                  << "] is out of bound but the next waypoint moves out of bound, continuing" << RTT::endlog();
+                  continue;
+                }
+                else
+                  RTT::Logger::log(RTT::Logger::Debug) << "waypoint " << j << " for joint [" << jointNames_[i] 
+                  << "] is out of bound and the next waypoint does not bring it withing bounds (motion dir " << motion_sign 
+                  << ")" << RTT::endlog();
+              }
+
+              RTT::Logger::log(RTT::Logger::Debug)
+                  << "Invalid goal [" << jointNames_[i] << "]: " << upperLimits_[i]
+                  << ">" << g->trajectory.points[j].positions[remapTable_[i]] << ">"
+                  << lowerLimits_[i] << RTT::endlog();
+              invalid_goal = true;
+            }
+            // reset the validity of the previous point (happens if we are out of invalid first few points)
+            previous_invalid = false;
           }
         }
       }
-      trj_ptr->points[i].time_from_start = g->trajectory.points[i].time_from_start;
-    }
 
-    // Check the time in the header OLD_HEADER_TIMESTAMP
-    // accept timestamp of zero (means now)
-    if (g->trajectory.header.stamp.toSec() !=0 )
-    {
-      if (g->trajectory.header.stamp < rtt_rosclock::host_now()) {
-        RTT::Logger::log(RTT::Logger::Error) << "Old header timestamp"
-                                           << RTT::endlog();
-        res.error_code =
-            control_msgs::FollowJointTrajectoryResult::OLD_HEADER_TIMESTAMP;
+      if (invalid_goal) {
+        RTT::Logger::log(RTT::Logger::Error)
+            << "Trajectory contains invalid goal!" << RTT::endlog();
+        res.error_code = control_msgs::FollowJointTrajectoryResult::INVALID_GOAL;
         gh.setRejected(res, "");
+        goal_active_ = false;
+        return;
       }
-      trajectory_finish_time_ = g->trajectory.header.stamp
-        + g->trajectory.points[g->trajectory.points.size() - 1].time_from_start;
-    }
-    else
-    {
-      trajectory_finish_time_ = rtt_rosclock::host_now()
-        + g->trajectory.points[g->trajectory.points.size() - 1].time_from_start;
-      // modify original time to now
-      trj_ptr->header.stamp = rtt_rosclock::host_now();
-    }
-    activeGoal_ = gh;
-    goal_active_ = true;
 
-    bool ok = true;
+      // Remap joints and fill up missing ones
+      trj_ptr->header = g->trajectory.header;
+      trj_ptr->points.resize(g->trajectory.points.size());
 
-    RTT::TaskContext::PeerList peers = this->getPeerList();
-    for (size_t i = 0; i < peers.size(); i++) {
-      RTT::Logger::log(RTT::Logger::Debug) << "Starting peer : " << peers[i]
-                                           << RTT::endlog();
-      if(!this->getPeer(peers[i])->isRunning())
-        ok = ok && this->getPeer(peers[i])->start();
-    }
+      for (unsigned int i = 0; i < g->trajectory.points.size(); i++) {
+        trj_ptr->points[i].positions.resize(numberOfJoints_);
+        for (unsigned int j = 0; j < numberOfJoints_; j++) {
+          if (remapTable_[j] >= 0) { // if provided joint
+            trj_ptr->points[i].positions[j] = g->trajectory.points[i].positions[remapTable_[j]];
+          }
+          else { // set current value for not provided joints.
+            trj_ptr->points[i].positions[j] = joint_position_[j];
+          }
+        }
 
-    if (ok) {
-      trajectory_msgs::JointTrajectoryConstPtr trj_cptr =
-          trajectory_msgs::JointTrajectoryConstPtr(trj_ptr);
+        if( g->trajectory.points[i].velocities.size()) {
+          // if any velocity info given
+          trj_ptr->points[i].velocities.resize(numberOfJoints_);
+          for (unsigned int j = 0; j < numberOfJoints_; j++) {
+            if (remapTable_[j] >= 0) { // if provided joint
+              trj_ptr->points[i].velocities[j] = g->trajectory.points[i].velocities[remapTable_[j]];
+            }
+            else { // set 0 for not provided joints.
+              trj_ptr->points[i].velocities[j] = 0.0;
+            }
+          }
+        }
+        
+        if( g->trajectory.points[i].accelerations.size()) {
+          // if any acceleration info given
+          trj_ptr->points[i].accelerations.resize(numberOfJoints_);
+          for (unsigned int j = 0; j < numberOfJoints_; j++) {
+            if (remapTable_[j] >= 0) { // if provided joint
+              trj_ptr->points[i].accelerations[j] = g->trajectory.points[i].accelerations[remapTable_[j]];
+            }
+            else { // set 0 for not provided joints.
+              trj_ptr->points[i].accelerations[j] = 0.0;
+            }
+          }
+        }
+        trj_ptr->points[i].time_from_start = g->trajectory.points[i].time_from_start;
+      }
 
-      trajectory_ptr_port_.write(trj_cptr);
-
-      gh.setAccepted();
+      // Check the time in the header OLD_HEADER_TIMESTAMP
+      // accept timestamp of zero (means now)
+      if (g->trajectory.header.stamp.toSec() !=0 )
+      {
+        if (g->trajectory.header.stamp < rtt_rosclock::host_now()) {
+          RTT::Logger::log(RTT::Logger::Error) << "Old header timestamp"
+                                             << RTT::endlog();
+          res.error_code =
+              control_msgs::FollowJointTrajectoryResult::OLD_HEADER_TIMESTAMP;
+          gh.setRejected(res, "");
+        }
+        trajectory_finish_time_ = g->trajectory.header.stamp
+          + g->trajectory.points[g->trajectory.points.size() - 1].time_from_start;
+      }
+      else
+      {
+        trajectory_finish_time_ = rtt_rosclock::host_now()
+          + g->trajectory.points[g->trajectory.points.size() - 1].time_from_start;
+        // modify original time to now
+        trj_ptr->header.stamp = rtt_rosclock::host_now();
+      }
+      activeGoal_ = gh;
       goal_active_ = true;
+
+      bool ok = true;
+
+      RTT::TaskContext::PeerList peers = this->getPeerList();
+      for (size_t i = 0; i < peers.size(); i++) {
+        RTT::Logger::log(RTT::Logger::Debug) << "Starting peer : " << peers[i]
+                                             << RTT::endlog();
+        if(!this->getPeer(peers[i])->isRunning())
+          ok = ok && this->getPeer(peers[i])->start();
+      }
+
+      if (ok) {
+        trajectory_msgs::JointTrajectoryConstPtr trj_cptr =
+            trajectory_msgs::JointTrajectoryConstPtr(trj_ptr);
+
+        trajectory_ptr_port_.write(trj_cptr);
+
+        gh.setAccepted();
+        goal_active_ = true;
+      } else {
+        RTT::Logger::log(RTT::Logger::Error) << "peer did not start : " << RTT::endlog();
+        gh.setRejected();
+        goal_active_ = false;
+      }
     } else {
-      RTT::Logger::log(RTT::Logger::Error) << "peer did not start : " << RTT::endlog();
       gh.setRejected();
-      goal_active_ = false;
     }
-  } else {
-    gh.setRejected();
+  }
+  else {
+      gh.setRejected();
   }
 }
 
 void InternalSpaceSplineTrajectoryAction::cancelCB(GoalHandle gh) {
-  goal_active_ = false;
+  cancelGoal();
 }
+
+void InternalSpaceSplineTrajectoryAction::cancelGoal() {
+  if (goal_active_)
+  {
+    control_msgs::FollowJointTrajectoryResult res;
+    activeGoal_.setAborted(res, "Goal cancelled");
+    goal_active_ = false;
+    // Stop the generator
+    // TODO check if it is not too harsh, but should be filtered out by the filter
+    RTT::TaskContext::PeerList peers = this->getPeerList();
+    for (size_t i = 0; i < peers.size(); i++) {
+      RTT::Logger::log(RTT::Logger::Debug) << "Stopping peer : " << peers[i]
+                                          << RTT::endlog();
+      if(this->getPeer(peers[i])->isRunning())
+        this->getPeer(peers[i])->stop();
+    }
+  }
+}
+
+
 
 void InternalSpaceSplineTrajectoryAction::commandCB() {
   
