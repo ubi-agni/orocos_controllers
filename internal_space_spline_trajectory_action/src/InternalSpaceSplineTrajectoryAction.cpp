@@ -259,13 +259,14 @@ void InternalSpaceSplineTrajectoryAction::setSafeMode(const bool safe_mode)
 
 
 void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
+  control_msgs::FollowJointTrajectoryResult res;
   if (enable_) {  // in safe mode no goal is accepted
     if (!goal_active_) {
       trajectory_msgs::JointTrajectory* trj_ptr =
           new trajectory_msgs::JointTrajectory;
       Goal g = gh.getGoal();
 
-      control_msgs::FollowJointTrajectoryResult res;
+      
 
       RTT::Logger::log(RTT::Logger::Debug) << "Received trajectory contain "
                                            << g->trajectory.points.size()
@@ -289,7 +290,7 @@ void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
               << "Trajectory contains invalid joint" << RTT::endlog();
           res.error_code =
               control_msgs::FollowJointTrajectoryResult::INVALID_JOINTS;
-          gh.setRejected(res, "");
+          gh.setRejected(res, "Invalid joints");
           return;
         } else {
           remapTable_[jointId] = j;
@@ -350,7 +351,7 @@ void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
         RTT::Logger::log(RTT::Logger::Error)
             << "Trajectory contains invalid goal!" << RTT::endlog();
         res.error_code = control_msgs::FollowJointTrajectoryResult::INVALID_GOAL;
-        gh.setRejected(res, "");
+        gh.setRejected(res, "Invalid goal");
         goal_active_ = false;
         return;
       }
@@ -442,15 +443,18 @@ void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
         goal_active_ = true;
       } else {
         RTT::Logger::log(RTT::Logger::Error) << "peer did not start : " << RTT::endlog();
-        gh.setRejected();
+        res.error_code = -8; 
+        gh.setRejected(res, "Generator peer did not start");
         goal_active_ = false;
       }
     } else {
-      gh.setRejected();
+      res.error_code = -7; 
+      gh.setRejected(res, "another goal is already active");
     }
   }
   else {
-      gh.setRejected();
+    res.error_code = -6; 
+    gh.setRejected(res, "Trajectory controller enabled");
   }
 }
 
