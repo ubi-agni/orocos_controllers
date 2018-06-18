@@ -60,7 +60,9 @@ class InternalSpaceSplineTrajectoryGenerator : public RTT::TaskContext {
 
   virtual bool configureHook();
   virtual bool startHook();
+  virtual void stopHook();
   virtual void updateHook();
+  
 
  protected:
   RTT::InputPort<trajectory_msgs::JointTrajectoryConstPtr> port_trajectory_;

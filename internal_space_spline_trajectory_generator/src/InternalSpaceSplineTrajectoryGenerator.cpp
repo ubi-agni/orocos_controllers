@@ -230,6 +230,16 @@ void InternalSpaceSplineTrajectoryGenerator::updateHook() {
   port_internal_space_posvel_command_.write(setpoint_posvel_);
 }
 
+
+void InternalSpaceSplineTrajectoryGenerator::stopHook() {
+  // at stop, send the incoming joint as output (for convergence)
+  if (port_internal_space_position_measurement_.read(setpoint_) == RTT::NewData) {
+      port_internal_space_position_command_.write(setpoint_);
+  }
+}
+
+
+
 ORO_CREATE_COMPONENT(InternalSpaceSplineTrajectoryGenerator)
 
 
