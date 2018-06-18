@@ -427,10 +427,13 @@ void InternalSpaceSplineTrajectoryAction::goalCB(GoalHandle gh) {
 
       RTT::TaskContext::PeerList peers = this->getPeerList();
       for (size_t i = 0; i < peers.size(); i++) {
-        RTT::Logger::log(RTT::Logger::Debug) << "Starting peer : " << peers[i]
-                                             << RTT::endlog();
+        
         if(!this->getPeer(peers[i])->isRunning())
+        {
+          RTT::Logger::log(RTT::Logger::Debug) << "Starting peer : " << peers[i]
+                                             << RTT::endlog();
           ok = ok && this->getPeer(peers[i])->start();
+        }
       }
 
       if (ok) {
