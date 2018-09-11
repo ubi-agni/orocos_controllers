@@ -188,9 +188,8 @@ void InternalSpaceSplineTrajectoryAction::updateHook() {
         if(desired_joint_position_data)
         {
           feedback_.desired.positions[i] = desired_joint_position_[i];
-          feedback_.error.positions[i] = joint_position_[i]
-            - desired_joint_position_[i];
         }
+        feedback_.error.positions[i] = joint_position_[i] - desired_joint_position_[i];
       }
 
       feedback_.header.stamp = rtt_rosclock::host_now();
