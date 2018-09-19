@@ -1,0 +1,27 @@
+<package>
+  <name>apply_twist</name>
+  <version>0.1.0</version>
+  <description>apply_twist</description>
+  <maintainer email="gwalck@techfak.uni-bielefeld.de">Guillaume Walck</maintainer>
+
+  <license>BSD</license>
+
+  <author email="gwalck@techfak.uni-bielefeld.de">Guillaume Walck</author>
+  
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>rtt</build_depend>
+  <build_depend>rtt_ros</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>eigen_conversions</build_depend>
+  <build_depend>std_msgs</build_depend>
+
+  <run_depend>rtt</run_depend>
+  <run_depend>rtt_ros</run_depend>
+  <run_depend>std_msgs</run_depend>
+  <run_depend>geometry_msgs</run_depend>
+  <run_depend>eigen_conversions</run_depend>
+
+  <export>
+    <rtt_plugin_depend>rtt_ros</rtt_plugin_depend>
+  </export>
+</package>
