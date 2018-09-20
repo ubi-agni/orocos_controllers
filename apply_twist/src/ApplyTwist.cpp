@@ -46,7 +46,7 @@
 using namespace Eigen;
 
 ApplyTwist::ApplyTwist(const std::string& name)
-  : RTT::TaskContext(name, PreOperational), dt_(0.002) {
+  : RTT::TaskContext(name, PreOperational), dt_(0.01) {
   this->ports()->addPort("PoseCmd", pose_command_port_);
   this->ports()->addPort("TwistCmd", twist_command_port_);
   this->ports()->addPort("CombinedPoseCmd", combined_pose_port_);
@@ -86,9 +86,9 @@ void ApplyTwist::updateHook() {
       combined_pose_.position.z = cmd_twist_.linear.z * dt_;
 
       // create a quaternion for the angular part
-      Quaterniond q_twist = Quaterniond(AngleAxisd(cmd_twist_.angular.x * dt_, Vector3d::UnitZ())
+      Quaterniond q_twist = Quaterniond(AngleAxisd(cmd_twist_.angular.z * dt_, Vector3d::UnitZ())
                                  * AngleAxisd(cmd_twist_.angular.y * dt_, Vector3d::UnitY())
-                                 * AngleAxisd(cmd_twist_.angular.z * dt_, Vector3d::UnitX())); 
+                                 * AngleAxisd(cmd_twist_.angular.x * dt_, Vector3d::UnitX())); 
 
       // apply to the commanded orientation
       Quaterniond q_ori;
