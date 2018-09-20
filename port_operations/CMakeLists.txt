@@ -18,8 +18,8 @@ target_link_libraries(port_double_aggregate ${catkin_LIBRARIES})
 orocos_component(port_double_sum src/PortDoubleSum.cpp)
 target_link_libraries(port_double_sum ${catkin_LIBRARIES})
 
-orocos_component(port_pose_twist_sum src/PortPoseTwistSum.cpp)
-target_link_libraries(port_pose_twist_sum ${catkin_LIBRARIES})
+orocos_component(port_twist_sum src/PortTwistSum.cpp)
+target_link_libraries(port_twist_sum ${catkin_LIBRARIES})
 
 orocos_component(port_double_to_float64 src/PortDoubleToFloat64.cpp)
 target_link_libraries(port_double_to_float64 ${catkin_LIBRARIES})

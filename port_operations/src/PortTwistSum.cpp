@@ -30,7 +30,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "PortPoseTwistSum.h"
+#include "PortTwistSum.h"
 
 #include <string>
 
@@ -45,48 +45,41 @@
 
 using namespace Eigen;
 
-PortPoseTwistSum::PortPoseTwistSum(const std::string& name)
+PortTwistSum::PortTwistSum(const std::string& name)
   : RTT::TaskContext(name, PreOperational) {
-  this->ports()->addPort("PoseCmd", pose_command_port_);
-  this->ports()->addPort("TwistCmd", twist_command_port_);
-  this->ports()->addPort("CombinedPoseCmd", combined_pose_port_);
+  this->ports()->addPort("TwistA", twist_a_port_);
+  this->ports()->addPort("TwistB", twist_b_port_);
+  this->ports()->addPort("TwistSum", twist_sum_port_);
 }
 
-PortPoseTwistSum::~PortPoseTwistSum() {
+PortTwistSum::~PortTwistSum() {
 }
 
-bool PortPoseTwistSum::configureHook() {
+bool PortTwistSum::configureHook() {
 
   return true;
 }
 
 // if any of the inputs is new the new output value is generated
-void PortPoseTwistSum::updateHook() {
-  double sum = 0.0;
-  bool new_data = false;
-
-
-  if (pose_command_port_.read(combined_pose_) == RTT::NewData) { 
-    if (twist_command_port_.read(cmd_twist_) == RTT::NewData) {
+void PortTwistSum::updateHook() {
+  if (twist_a_port_.read(twist_sum_) == RTT::NewData) {
+    if (twist_b_port_.read(twist_tmp_) == RTT::NewData) {
       // add the linear part
-      combined_pose_.position.x = cmd_twist_.linear.x;
-      combined_pose_.position.y = cmd_twist_.linear.y;
-      combined_pose_.position.z = cmd_twist_.linear.z;
-
-      // create a quaternion for the angular part
-      Quaterniond q_twist = Quaterniond(AngleAxisd(cmd_twist_.angular.x, Vector3d::UnitZ())
-                                 * AngleAxisd(cmd_twist_.angular.y, Vector3d::UnitY())
-                                 * AngleAxisd(cmd_twist_.angular.z, Vector3d::UnitX())); 
-
-      // apply to the commanded orientation
-      Quaterniond q_ori;
-      tf::quaternionMsgToEigen(combined_pose_.orientation, q_ori);
-      q_ori = q_ori * q_twist;  // combine with ori
-      tf::quaternionEigenToMsg(q_ori, combined_pose_.orientation);
+      twist_sum_.linear.x += twist_tmp_.linear.x;
+      twist_sum_.linear.y += twist_tmp_.linear.y;
+      twist_sum_.linear.z += twist_tmp_.linear.z;
+      twist_sum_.angular.x += twist_tmp_.angular.x;
+      twist_sum_.angular.y += twist_tmp_.angular.y;
+      twist_sum_.angular.z += twist_tmp_.angular.z;
     }
-    combined_pose_port_.write(combined_pose_);
+    twist_sum_port_.write(twist_sum_);
+  }
+  else
+  {
+    if (twist_b_port_.read(twist_sum_) == RTT::NewData)
+      twist_sum_port_.write(twist_sum_);
   }
 }
 
-ORO_CREATE_COMPONENT(PortPoseTwistSum)
+ORO_CREATE_COMPONENT(PortTwistSum)
 

@@ -30,35 +30,34 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PORTPOSTWISTSUM_H_
-#define PORTPOSTWISTSUM_H_
+#ifndef PORTTWISTSUM_H_
+#define PORTTWISTSUM_H_
 
 #include <string>
 #include <vector>
 
 #include <rtt/TaskContext.hpp>
 #include <rtt/Port.hpp>
-#include <geometry_msgs/Pose.h>
 #include <geometry_msgs/Twist.h>
 
-class PortPoseTwistSum : public RTT::TaskContext {
+class PortTwistSum : public RTT::TaskContext {
  public:
-  explicit PortPoseTwistSum(const std::string& name);
-  virtual ~PortPoseTwistSum();
+  explicit PortTwistSum(const std::string& name);
+  virtual ~PortTwistSum();
 
   bool configureHook();
   void updateHook();
 
  private:
   // ports
-  RTT::InputPort<geometry_msgs::Pose> pose_command_port_;
-  RTT::InputPort<geometry_msgs::Twist> twist_command_port_;
-  RTT::OutputPort<geometry_msgs::Pose> combined_pose_port_;
+  RTT::InputPort<geometry_msgs::Twist> twist_a_port_;
+  RTT::InputPort<geometry_msgs::Twist> twist_b_port_;
+  RTT::OutputPort<geometry_msgs::Twist> twist_sum_port_;
 
   // data
-  geometry_msgs::Pose combined_pose_;
-  geometry_msgs::Twist cmd_twist_;
+  geometry_msgs::Twist twist_sum_;
+  geometry_msgs::Twist twist_tmp_;
 
 };
 
-#endif  // PORTPOSTWISTSUM_H_
+#endif  // PORTTWISTSUM_H_
