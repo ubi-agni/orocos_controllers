@@ -81,9 +81,9 @@ void ApplyTwist::updateHook() {
       RTT::Logger::log(RTT::Logger::Debug) << "ApplyTwist: received twist"
                                          << RTT::endlog();
       // add the linear part
-      combined_pose_.position.x = cmd_twist_.linear.x * dt_;
-      combined_pose_.position.y = cmd_twist_.linear.y * dt_;
-      combined_pose_.position.z = cmd_twist_.linear.z * dt_;
+      combined_pose_.position.x += cmd_twist_.linear.x * dt_;
+      combined_pose_.position.y += cmd_twist_.linear.y * dt_;
+      combined_pose_.position.z += cmd_twist_.linear.z * dt_;
 
       // create a quaternion for the angular part
       Quaterniond q_twist = Quaterniond(AngleAxisd(cmd_twist_.angular.z * dt_, Vector3d::UnitZ())
@@ -93,7 +93,7 @@ void ApplyTwist::updateHook() {
       // apply to the commanded orientation
       Quaterniond q_ori;
       tf::quaternionMsgToEigen(combined_pose_.orientation, q_ori);
-      q_ori = q_ori * q_twist;  // combine with ori
+      q_ori = q_ori * q_twist;  // combine with ori (local rotation, with right multiply)
       tf::quaternionEigenToMsg(q_ori, combined_pose_.orientation);
     }
     combined_pose_port_.write(combined_pose_);
