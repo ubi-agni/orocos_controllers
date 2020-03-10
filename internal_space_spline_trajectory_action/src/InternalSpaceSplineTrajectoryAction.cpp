@@ -150,6 +150,9 @@ void InternalSpaceSplineTrajectoryAction::updateHook() {
       violated = false;
       for (int i = 0; i < numberOfJoints_; i++) {
         for (int j = 0; j < g->goal_tolerance.size(); j++) {
+          // skip negative or zero tolerances
+          if (g->goal_tolerance[j].position <= 0)
+            continue;
           if (g->goal_tolerance[j].name == g->trajectory.joint_names[i]) {
             // If there is a limit, check the position
             if (joint_position_[remapTable_[i]] + g->goal_tolerance[j].position
@@ -192,6 +195,9 @@ void InternalSpaceSplineTrajectoryAction::updateHook() {
       // check PATH_TOLERANCE_VIOLATED
       violated = false;
       for (int i = 0; i < g->path_tolerance.size(); i++) {
+        // skip negative or zero tolerances
+        if (g->path_tolerance[i].position <= 0)
+          continue;
         for (int j = 0; j < jointNames_.size(); j++) {
           if (jointNames_[j] == g->path_tolerance[i].name) {
             if(desired_joint_position_data)
@@ -199,8 +205,12 @@ void InternalSpaceSplineTrajectoryAction::updateHook() {
               if (fabs(joint_position_[j] - desired_joint_position_[j])
                   > g->path_tolerance[i].position) {
                 violated = true;
-                RTT::Logger::log(RTT::Logger::Error) << "Path tolerance violated"
+                RTT::Logger::log(RTT::Logger::Error) << "Path tolerance violated at least for joint "
+                                                     << jointNames_[j] << " current: " << joint_position_[j]
+                                                     << " desired: " << desired_joint_position_[j]
+                                                     << " differs more than " << g->path_tolerance[i].position
                                                      << RTT::endlog();
+                break;
               }
             }
           }
