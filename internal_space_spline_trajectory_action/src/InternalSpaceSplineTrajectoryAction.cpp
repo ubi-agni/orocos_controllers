@@ -136,18 +136,15 @@ void InternalSpaceSplineTrajectoryAction::updateHook() {
   
   Goal g = activeGoal_.getGoal();
   ros::Time now;
-  
+  now = rtt_rosclock::host_now();
   if (command_active_)
   {
-    now = rtt_rosclock::host_now();
     if (now > trajectory_finish_time_)
       command_active_ = false;
   }
 
   if (goal_active_ && joint_position_data) {
     bool violated = false;
-    now = rtt_rosclock::host_now();
-
     // analyze goal tolerance
     if (now > trajectory_finish_time_) {
       violated = false;
@@ -156,12 +153,9 @@ void InternalSpaceSplineTrajectoryAction::updateHook() {
           if (g->goal_tolerance[j].name == g->trajectory.joint_names[i]) {
             // If there is a limit, check the position
             if (joint_position_[remapTable_[i]] + g->goal_tolerance[j].position
-                < g->trajectory.points[g->trajectory.points.size() - 1]
-                    .positions[i]
-                || joint_position_[remapTable_[i]]
-                    - g->goal_tolerance[j].position
-                    > g->trajectory.points[g->trajectory.points.size() - 1]
-                        .positions[i]) {
+                < g->trajectory.points[g->trajectory.points.size() - 1].positions[i]
+                || joint_position_[remapTable_[i]] - g->goal_tolerance[j].position
+                    > g->trajectory.points[g->trajectory.points.size() - 1].positions[i]) {
               violated = true;
               RTT::Logger::log(RTT::Logger::Debug) << g->goal_tolerance[j].name
                   << " violated with position "
