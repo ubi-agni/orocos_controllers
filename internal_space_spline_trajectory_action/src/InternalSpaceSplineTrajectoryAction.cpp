@@ -144,6 +144,20 @@ void InternalSpaceSplineTrajectoryAction::updateHook() {
   }
 
   if (goal_active_ && joint_position_data) {
+
+    // always send feedback
+    for (int i = 0; i < numberOfJoints_; i++) {
+      feedback_.actual.positions[i] = joint_position_[i];
+      if(desired_joint_position_data)
+      {
+        feedback_.desired.positions[i] = desired_joint_position_[i];
+      }
+      feedback_.error.positions[i] = joint_position_[i] - desired_joint_position_[i];
+    }
+
+    feedback_.header.stamp = rtt_rosclock::host_now();
+    activeGoal_.publishFeedback(feedback_);
+    
     bool violated = false;
     // analyze goal tolerance
     if (now > trajectory_finish_time_) {
@@ -179,19 +193,6 @@ void InternalSpaceSplineTrajectoryAction::updateHook() {
         goal_active_ = false;
       }
     } else {
-      // send feedback
-      for (int i = 0; i < numberOfJoints_; i++) {
-        feedback_.actual.positions[i] = joint_position_[i];
-        if(desired_joint_position_data)
-        {
-          feedback_.desired.positions[i] = desired_joint_position_[i];
-        }
-        feedback_.error.positions[i] = joint_position_[i] - desired_joint_position_[i];
-      }
-
-      feedback_.header.stamp = rtt_rosclock::host_now();
-      activeGoal_.publishFeedback(feedback_);
-
       // check PATH_TOLERANCE_VIOLATED
       violated = false;
       for (int i = 0; i < g->path_tolerance.size(); i++) {
